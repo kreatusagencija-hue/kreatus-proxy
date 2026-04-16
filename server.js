@@ -14,9 +14,6 @@ app.use(express.json());
 
 app.get('/', (req, res) => res.json({ status: 'Kreatus Proxy OK' }));
 
-// TIKTOK - clockworks~tiktok-scraper
-// Podpira: hashtags, searchQueries, profiles, postURLs
-// leastDiggs = minimalni likes (ne ogledi - Apify nima ogledi filtra)
 app.post('/apify/tiktok', async (req, res) => {
   const token = req.headers['x-apify-token'];
   const { hashtags, searchQueries, profiles, postURLs, count } = req.body;
@@ -28,7 +25,6 @@ app.post('/apify/tiktok', async (req, res) => {
     profiles: profiles || [],
     postURLs: postURLs || [],
     resultsPerPage: count || 20,
-    leastDiggs: 0,
     shouldDownloadVideos: false,
     shouldDownloadCovers: false,
     shouldDownloadSlideshowImages: false,
@@ -37,6 +33,7 @@ app.post('/apify/tiktok', async (req, res) => {
     downloadSubtitlesOptions: 'NEVER_DOWNLOAD_SUBTITLES',
     scrapeRelatedVideos: false,
     proxyCountryCode: 'None'
+    // leastDiggs NI vključen - filtriramo sami po pridobitvi rezultatov
   };
 
   try {
@@ -52,8 +49,6 @@ app.post('/apify/tiktok', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// INSTAGRAM - apify~instagram-hashtag-scraper
-// Podpira: hashtags, resultsType, resultsLimit
 app.post('/apify/instagram', async (req, res) => {
   const token = req.headers['x-apify-token'];
   const { hashtags, count } = req.body;
@@ -78,7 +73,6 @@ app.post('/apify/instagram', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Preveri status runa
 app.get('/apify/run/:runId/status', async (req, res) => {
   const token = req.headers['x-apify-token'];
   try {
@@ -87,7 +81,6 @@ app.get('/apify/run/:runId/status', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Pridobi rezultate
 app.get('/apify/dataset/:datasetId', async (req, res) => {
   const token = req.headers['x-apify-token'];
   const limit = req.query.limit || 50;
@@ -97,7 +90,6 @@ app.get('/apify/dataset/:datasetId', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Claude - generiranje ključnih besed iz prompta
 app.post('/claude/keywords', async (req, res) => {
   const token = req.headers['x-claude-token'];
   const { prompt, client } = req.body;
@@ -108,21 +100,13 @@ app.post('/claude/keywords', async (req, res) => {
       headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514', max_tokens: 300,
-        messages: [{ role: 'user', content: `Za TikTok/Instagram iskanje za stranko "${client}" izvleci iz opisa:
-- 3 angleske hashtage (brez # znaka)
-- 2 angleske iskalne fraze (keyword search)
-
-Opis: "${prompt}"
-
-Vrni SAMO JSON v tej obliki, brez razlage:
-{"hashtags":["beseda1","beseda2","beseda3"],"searchQueries":["fraza1","fraza2"]}` }]
+        messages: [{ role: 'user', content: `Za TikTok/Instagram iskanje za stranko "${client}" izvleci iz opisa:\n- 3 angleske hashtage (brez # znaka)\n- 2 angleske iskalne fraze\n\nOpis: "${prompt}"\n\nVrni SAMO JSON brez razlage:\n{"hashtags":["beseda1","beseda2","beseda3"],"searchQueries":["fraza1","fraza2"]}` }]
       })
     });
     const d = await r.json();
     const text = (d.content?.[0]?.text || '').trim();
     try {
-      const parsed = JSON.parse(text);
-      res.json(parsed);
+      res.json(JSON.parse(text));
     } catch {
       const words = prompt.split(/[,\s]+/).filter(w => w.length > 3).slice(0, 3);
       res.json({ hashtags: words, searchQueries: [prompt.substring(0, 50)] });
@@ -130,7 +114,6 @@ Vrni SAMO JSON v tej obliki, brez razlage:
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Claude - analiza videa
 app.post('/claude/analyze', async (req, res) => {
   const token = req.headers['x-claude-token'];
   const { video, client } = req.body;
@@ -141,18 +124,7 @@ app.post('/claude/analyze', async (req, res) => {
       headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514', max_tokens: 1000,
-        messages: [{ role: 'user', content: `Analiziraj ta ${video.platform} reel za agencijo Kreatus, stranka: ${client}.
-
-Profil: ${video.handle}
-Opis: ${video.description}
-Ogledi: ${video.views} | Likes: ${video.likes} | Komentarji: ${video.comments}
-
-Napisi v slovenscini:
-1. ANALIZA VSEBINE - kaj prikazuje, slog, ton, hook
-2. ZAKAJ DELUJE - psihologija, struktura, timing
-3. KLJUCNI ELEMENTI ZA ADAPTACIJO - kaj vzeti za nase vsebine
-
-Bodi konkreten in kratek.` }]
+        messages: [{ role: 'user', content: `Analiziraj ta ${video.platform} reel za stranko ${client}:\nProfil: ${video.handle}\nOpis: ${video.description}\nOgledi: ${video.views} | Likes: ${video.likes} | Komentarji: ${video.comments}\n\nNapisi v slovenscini:\n1. ANALIZA VSEBINE\n2. ZAKAJ DELUJE\n3. KLJUCNI ELEMENTI ZA ADAPTACIJO` }]
       })
     });
     const d = await r.json();
@@ -160,7 +132,6 @@ Bodi konkreten in kratek.` }]
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Claude - generiranje scenarija
 app.post('/claude/scenario', async (req, res) => {
   const token = req.headers['x-claude-token'];
   const { analysis, video, client } = req.body;
@@ -171,19 +142,7 @@ app.post('/claude/scenario', async (req, res) => {
       headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514', max_tokens: 1500,
-        messages: [{ role: 'user', content: `Generiraj video scenarij za stranko "${client}" navdihnjeno s ${video.platform} reelom od @${video.handle}.
-
-ANALIZA ORIGINALNEGA VIDEA:
-${analysis}
-
-Napisi scenarij v slovenscini:
-HOOK (0-3 sek):
-SREDINA (3-25 sek):
-CTA (25-30 sek):
-CAPTION:
-HASHTAGI:
-GLASBA/TON:
-SNEMALNI NAPOTKI:` }]
+        messages: [{ role: 'user', content: `Generiraj scenarij za stranko "${client}" po vzoru @${video.handle} (${video.platform}).\n\nANALIZA:\n${analysis}\n\nStruktura v slovenscini:\nHOOK (0-3 sek):\nSREDINA (3-25 sek):\nCTA (25-30 sek):\nCAPTION:\nHASHTAGI:\nGLASBA:\nSNEMALNI NAPOTKI:` }]
       })
     });
     const d = await r.json();
@@ -191,34 +150,18 @@ SNEMALNI NAPOTKI:` }]
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Claude - skupna analiza vec videov
 app.post('/claude/analyze-all', async (req, res) => {
   const token = req.headers['x-claude-token'];
   const { videos, client } = req.body;
   if (!token) return res.status(400).json({ error: 'Manjka Claude token' });
-  const summaries = videos.map(v =>
-    `@${v.handle} (${v.platform}): ${(v.description || '').substring(0, 100)} | ${v.views} ogledov | ${v.likes} likes`
-  ).join('\n');
+  const s = videos.map(v => `@${v.handle} (${v.platform}): ${(v.description||'').substring(0,100)} | ${v.views} ogledov`).join('\n');
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514', max_tokens: 1800,
-        messages: [{ role: 'user', content: `Analiziraj ${videos.length} videov in generiraj skupni scenarij za stranko "${client}":
-
-${summaries}
-
-Napisi v slovenscini:
-SKUPNI VZORCI:
-FORMULA USPEHA:
-HOOK (0-3 sek):
-SREDINA (3-25 sek):
-CTA (25-30 sek):
-CAPTION:
-HASHTAGI:
-GLASBA/TON:
-SNEMALNI NAPOTKI:` }]
+        messages: [{ role: 'user', content: `Za stranko "${client}" analiziraj ${videos.length} videov in generiraj skupni scenarij:\n\n${s}\n\nSKUPNI VZORCI:\nFORMULA USPEHA:\nHOOK (0-3 sek):\nSREDINA (3-25 sek):\nCTA (25-30 sek):\nCAPTION:\nHASHTAGI:\nGLASBA:\nSNEMALNI NAPOTKI:\n\nV slovenscini.` }]
       })
     });
     const d = await r.json();
