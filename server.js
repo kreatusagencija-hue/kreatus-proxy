@@ -26,11 +26,36 @@ app.get('/apify/test', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Zaženi Apify actor - z pravilnimi input formati za vsak scraper
 app.post('/apify/run', async (req, res) => {
   const token = req.headers['x-apify-token'];
-  const { actorId, input } = req.body;
+  const { platform, keywords, count } = req.body;
   if (!token) return res.status(400).json({ error: 'Manjka Apify token' });
-  if (!actorId) return res.status(400).json({ error: 'Manjka actorId' });
+
+  let actorId, input;
+
+  if (platform === 'tiktok') {
+    // clockworks~tiktok-scraper - glavni TikTok scraper
+    actorId = 'clockworks~tiktok-scraper';
+    input = {
+      searchQueries: keywords,        // iskanje po ključnih besedah
+      resultsPerPage: count || 10,
+      shouldDownloadVideos: false,
+      shouldDownloadCovers: false,
+      shouldDownloadSubtitles: false
+    };
+  } else if (platform === 'instagram') {
+    // apify~instagram-scraper - uradni Instagram scraper
+    actorId = 'apify~instagram-scraper';
+    input = {
+      search: keywords[0] || '',
+      searchType: 'hashtag',
+      searchLimit: count || 10,
+      resultsType: 'posts',
+      resultsLimit: count || 10
+    };
+  }
+
   try {
     const r = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${token}`, {
       method: 'POST',
@@ -38,6 +63,7 @@ app.post('/apify/run', async (req, res) => {
       body: JSON.stringify(input)
     });
     const d = await r.json();
+    if (d.error) return res.status(400).json({ error: d.error.message || 'Apify napaka' });
     res.json(d);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -73,13 +99,13 @@ app.post('/claude/keywords', async (req, res) => {
       headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514', max_tokens: 300,
-        messages: [{ role: 'user', content: `Iz tega opisa za stranko "${client}" izvleci 5 iskanih kljucnih besed za TikTok/Instagram iskanje. Vrni SAMO JSON array stringov, brez backtick-ov: "${prompt}"` }]
+        messages: [{ role: 'user', content: `Iz tega opisa za stranko "${client}" izvleci 3 iskalne fraze za TikTok/Instagram. Vrni SAMO JSON array stringov v anglescini (brez slovenscine), brez backtick-ov: "${prompt}"` }]
       })
     });
     const d = await r.json();
     const text = d.content?.[0]?.text || '[]';
     try { res.json({ keywords: JSON.parse(text.trim()) }); }
-    catch { res.json({ keywords: prompt.split(/[,\s]+/).filter(w => w.length > 3).slice(0, 5) }); }
+    catch { res.json({ keywords: prompt.split(/[,]+/).map(s=>s.trim()).filter(Boolean).slice(0,3) }); }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -93,7 +119,7 @@ app.post('/claude/analyze', async (req, res) => {
       headers: { 'Content-Type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514', max_tokens: 1000,
-        messages: [{ role: 'user', content: `Analiziraj ta ${video.platform} reel za agencijo Kreatus (stranka: ${client}):\n\nProfil: ${video.handle}\nOpis: ${video.description}\nOgledi: ${video.views}, Vsecki: ${video.likes}, Komentarji: ${video.comments}\n\nNapisi v slovenscini:\n1. ANALIZA VSEBINE\n2. ZAKAJ DELUJE\n3. KLJUCNI ELEMENTI ZA ADAPTACIJO\n\nBodi konkreten in kratek.` }]
+        messages: [{ role: 'user', content: `Analiziraj ta ${video.platform} reel za agencijo Kreatus (stranka: ${client}):\n\nProfil: ${video.handle}\nOpis: ${video.description}\nOgledi: ${video.views}, Vsecki: ${video.likes}, Komentarji: ${video.comments}\n\nNapisi v slovenscini:\n1. ANALIZA VSEBINE\n2. ZAKAJ DELUJE\n3. KLJUCNI ELEMENTI ZA ADAPTACIJO\n\nKonkretno, kratko, uporabno za produkcijsko ekipo.` }]
       })
     });
     const d = await r.json();
